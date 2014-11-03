@@ -1,0 +1,3 @@
+gom 'github.com/naoina/kocha'
+gom 'github.com/michellh/goamz/aws'
+gom 'github.com/michellh/goamz/s3'
