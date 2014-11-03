@@ -7,6 +7,10 @@ import (
 	_ "image/png"
 	"net/http"
 
+	"github.com/ciela/playground_golang/lgtm_maker/aws"
+
+	"code.google.com/p/go-uuid/uuid"
+	"github.com/mitchellh/goamz/s3"
 	"github.com/naoina/kocha"
 )
 
@@ -25,6 +29,10 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 		return kocha.RenderError(c, http.StatusBadRequest)
 	}
 	defer f.Close()
+	//=====Content-Disposition=====
+	//form-data; name="image"; filename="nagiasu.jpg"
+	//=====Content-Type=====
+	//image/jpeg
 	for i, v := range h.Header {
 		println("=====" + i + "=====")
 		for _, w := range v {
@@ -38,9 +46,10 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	}
 	println(fm)
 
-	// TODO 配置用のパス決める
-
-	// TODO S3に配置
+	// 配置用のパス決めてS3に配置
+	iName := uuid.New() //ver4
+	// FIXME remove nil
+	aws.LgtmBucket.Put(iName+".jpg", nil, h.Header["Content-Type"][0], s3.PublicRead)
 
 	// TODO DBにIDを保存
 

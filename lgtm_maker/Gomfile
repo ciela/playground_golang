@@ -1,3 +1,5 @@
 gom 'github.com/naoina/kocha'
-gom 'github.com/michellh/goamz/aws'
-gom 'github.com/michellh/goamz/s3'
+gom 'github.com/mitchellh/goamz/aws'
+gom 'github.com/mitchellh/goamz/s3'
+gom 'gopkg.in/mgo.v2'
+gom 'code.google.com/p/go-uuid/uuid'
