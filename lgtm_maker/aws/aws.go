@@ -10,6 +10,7 @@ import (
 var LgtmBucket *s3.Bucket
 
 func init() {
+	log.Println("Initializing AWS infomation...")
 	auth, err := aws.EnvAuth() //TODO setenv auths
 	if err != nil {
 		log.Fatalln(err)
