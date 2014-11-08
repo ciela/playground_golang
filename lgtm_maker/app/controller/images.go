@@ -58,7 +58,6 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 
 	//画像のデコードとフォーマットバリデーション
 	img, fm, err := image.Decode(f)
-	println(fm)
 	if err != nil {
 		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when decoding the reqested image")
 	} else if fm != imgf {
