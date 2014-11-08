@@ -81,13 +81,15 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	}
 
 	// 配置用のパス決めてS3に配置
-	iName := uuid.New() //ver4
-	aws.LgtmBucket.Put(iName+imgf, b.Bytes(), ct, s3.PublicRead)
+	p := uuid.New() //ver4
+	if err = aws.LgtmBucket.Put(p, b.Bytes(), ct, s3.PublicRead); err != nil {
+		return kocha.RenderError(c, http.StatusInternalServerError, "An error has occured when uploading image")
+	}
 
 	// TODO DBにIDを保存
 
 	// FIXME remove nil
-	return kocha.Render(c, kocha.Data{"imagePath": iName + imgf})
+	return kocha.Render(c, kocha.Data{"imagePath": p})
 }
 
 func (im *Images) PUT(c *kocha.Context) kocha.Result {
