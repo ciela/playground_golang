@@ -2,10 +2,7 @@ package controller
 
 import (
 	"bytes"
-	"image"
-	"image/gif"
-	"image/jpeg"
-	"image/png"
+	"io"
 	"net/http"
 
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
@@ -42,47 +39,15 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	}
 	defer f.Close()
 
-	//ヘッダ情報からの形式取得
-	var imgf string
-	ct := h.Header["Content-Type"][0]
-	switch ct {
-	case "image/jpeg":
-		imgf = "jpeg"
-	case "image/gif":
-		imgf = "gif"
-	case "image/png":
-		imgf = "png"
-	default:
-		return kocha.RenderError(c, http.StatusBadRequest, "Image format must be either jpeg, gif or png")
-	}
-
-	//画像のデコードとフォーマットバリデーション
-	img, fm, err := image.Decode(f)
-	println(fm)
-	if err != nil {
-		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when decoding the reqested image")
-	} else if fm != imgf {
-		return kocha.RenderError(c, http.StatusBadRequest, "The format of actual image is not the same as the header")
-	}
-
+	//読み込み
 	b := new(bytes.Buffer)
-	switch imgf {
-	case "jpeg":
-		err = jpeg.Encode(b, img, nil)
-	case "gif":
-		err = gif.Encode(b, img, nil)
-	case "png":
-		err = png.Encode(b, img)
-	}
-	if err != nil {
-		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when encoding the requested image")
-	} else if b.Len() > MaxBytes {
-		return kocha.RenderError(c, http.StatusBadRequest, "Actual size of requested image is too large")
+	if w, err := io.Copy(b, f); err != nil || w > MaxBytes {
+		return kocha.RenderError(c, http.StatusBadRequest, "Size of your file is too large")
 	}
 
 	// 配置用のパス決めてS3に配置
 	p := uuid.New() //ver4
-	if err = aws.LgtmBucket.Put(p, b.Bytes(), ct, s3.PublicRead); err != nil {
+	if err = aws.LgtmBucket.Put(p, b.Bytes(), h.Header["Content-Type"][0], s3.PublicRead); err != nil {
 		return kocha.RenderError(c, http.StatusInternalServerError, "An error has occured when uploading image")
 	}
 
