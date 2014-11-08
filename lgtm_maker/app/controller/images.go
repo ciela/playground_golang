@@ -6,7 +6,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	//"mime/multipart"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
@@ -19,10 +19,22 @@ import (
 const (
 	// 最大画像容量(4MB)
 	MaxBytes = 4194304
+	// MIMEs
+	JpegCT = "image/jpeg"
+	PngCT  = "image/png"
+	GifCT  = "image/gif"
 )
 
-type Images struct {
-	*kocha.DefaultController
+type (
+	Drawer func(i *image.Image) (err error)
+
+	Images struct {
+		*kocha.DefaultController
+	}
+)
+
+var drawLGTM = func(i *image.Image) (err error) {
+	return
 }
 
 func (im *Images) GET(c *kocha.Context) kocha.Result {
@@ -47,11 +59,11 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	var imgf string
 	ct := h.Header["Content-Type"][0]
 	switch ct {
-	case "image/jpeg":
+	case JpegCT:
 		imgf = "jpeg"
-	case "image/gif":
+	case GifCT:
 		imgf = "gif"
-	case "image/png":
+	case PngCT:
 		imgf = "png"
 	default:
 		return kocha.RenderError(c, http.StatusBadRequest, "Image format must be either jpeg, gif or png")
@@ -65,13 +77,14 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 		return kocha.RenderError(c, http.StatusBadRequest, "The format of actual image is not the same as the header")
 	}
 
+	//指定のDrawerを使って描画しつつエンコード
 	b := new(bytes.Buffer)
-	switch imgf {
-	case "jpeg":
+	switch ct {
+	case JpegCT:
 		err = jpeg.Encode(b, img, nil)
-	case "gif":
+	case GifCT:
 		err = gif.Encode(b, img, nil)
-	case "png":
+	case PngCT:
 		err = png.Encode(b, img)
 	}
 	if err != nil {
@@ -104,35 +117,45 @@ func (im *Images) DELETE(c *kocha.Context) kocha.Result {
 	return kocha.Render(c)
 }
 
-//func decodeJPEG(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
-//	img, err = jpeg.Decode(*f)
-//	if err != nil {
-//		return
-//	}
-//	return
-//}
+func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+	if err = draw(img); err != nil {
+		return
+	}
+	err = jpeg.Encode(b, *img, nil)
+	return
+}
 
-//func decodeGIF(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
-//	gImg, err := gif.DecodeAll(*f)
-//	if err != nil {
-//		return
-//	}
-//	for _, pi := range gImg.Image { // []*PalletedImage
+func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+	if err = draw(img); err != nil {
+		return
+	}
+	err = png.Encode(b, *img)
+	return
+}
 
-//	}
-//	g := &gif.GIF{
-//		Delay:     gImg.Delay,
-//		Image:     gImg.Image,
-//		LoopCount: gImg.LoopCount,
-//	}
-//	gif.EncodeAll()
-//	return
-//}
-
-//func decodePNG(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
-//	img, err = png.Decode(*f)
-//	if err != nil {
-//		return
-//	}
-//	return
-//}
+func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
+	gImg, err := gif.DecodeAll(*f)
+	if err != nil {
+		return
+	}
+	// TODO goroutine化できるかな？
+	var img image.Image
+	for _, p := range gImg.Image { // []*image.Palleted
+		img = p
+		if err = draw(&img); err != nil {
+			return
+		}
+		p, ok := img.(*image.Paletted)
+		if !ok {
+			return
+		}
+		gImg.Image = append(gImg.Image, p)
+	}
+	g := &gif.GIF{
+		Delay:     gImg.Delay,
+		Image:     gImg.Image,
+		LoopCount: gImg.LoopCount,
+	}
+	err = gif.EncodeAll(b, g)
+	return
+}
