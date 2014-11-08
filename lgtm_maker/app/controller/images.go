@@ -6,6 +6,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	//"mime/multipart"
 	"net/http"
 
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
@@ -102,3 +103,36 @@ func (im *Images) DELETE(c *kocha.Context) kocha.Result {
 	//iid := c.Params.Get("imageId")
 	return kocha.Render(c)
 }
+
+//func decodeJPEG(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
+//	img, err = jpeg.Decode(*f)
+//	if err != nil {
+//		return
+//	}
+//	return
+//}
+
+//func decodeGIF(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
+//	gImg, err := gif.DecodeAll(*f)
+//	if err != nil {
+//		return
+//	}
+//	for _, pi := range gImg.Image { // []*PalletedImage
+
+//	}
+//	g := &gif.GIF{
+//		Delay:     gImg.Delay,
+//		Image:     gImg.Image,
+//		LoopCount: gImg.LoopCount,
+//	}
+//	gif.EncodeAll()
+//	return
+//}
+
+//func decodePNG(f *multipart.File, ct *string) (b *bytes.Buffer, err error) {
+//	img, err = png.Decode(*f)
+//	if err != nil {
+//		return
+//	}
+//	return
+//}
