@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"image"
+	"image/color"
+	_ "image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -36,6 +38,39 @@ type (
 )
 
 var drawLGTM = func(i *image.Image) (err error) {
+	palettedImg, ok := (*i).(*image.Paletted)
+	if ok {
+		rect := (*i).Bounds()
+		// TODO goroutine化
+		for y := 0; y < rect.Max.Y; y++ {
+			for x := 0; x < rect.Max.X; x++ {
+				if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
+					palettedImg.Set(x, y, color.RGBA{255, 255, 0, 128})
+				} else {
+					palettedImg.Set(x, y, (*i).At(x, y))
+				}
+			}
+		}
+		return
+	}
+
+	rgbaImg, ok := (*i).(*image.RGBA)
+	if ok {
+		rect := (*i).Bounds()
+		// TODO goroutine化
+		for y := 0; y < rect.Max.Y; y++ {
+			for x := 0; x < rect.Max.X; x++ {
+				if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
+					rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 128})
+				} else {
+					rgbaImg.Set(x, y, (*i).At(x, y))
+				}
+			}
+		}
+		return
+	}
+
+	err = errors.New("Image format is not appropriate")
 	return
 }
 
@@ -143,7 +178,6 @@ func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
 		log.Println("Decoding error: " + err.Error())
 		return
 	}
-	// TODO goroutine化できるかな？
 	var img image.Image
 	var frames []*image.Paletted
 	for _, p := range gImg.Image { // []*image.Palleted
