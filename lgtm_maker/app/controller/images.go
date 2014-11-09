@@ -85,7 +85,6 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	case JpegCT:
 		err = encodeJPEG(&img, b, drawLGTM)
 	case GifCT:
-		f.Seek(0, 0) //reset the seeker
 		err = encodeGIF(&f, b, drawLGTM)
 	case PngCT:
 		err = encodePNG(&img, b, drawLGTM)
@@ -104,7 +103,6 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 
 	// TODO DBにIDを保存
 
-	// FIXME remove nil
 	return kocha.Render(c, kocha.Data{"imagePath": p})
 }
 
@@ -139,6 +137,7 @@ func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 }
 
 func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
+	(*f).Seek(0, 0) //Seekerのリセット
 	gImg, err := gif.DecodeAll(*f)
 	if err != nil {
 		log.Println("Decoding error: " + err.Error())
