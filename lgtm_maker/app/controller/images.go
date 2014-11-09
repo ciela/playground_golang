@@ -5,7 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
-	_ "image/draw"
+	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -39,6 +39,11 @@ type (
 )
 
 var drawLGTMWithRGBA = func(i *image.Image) (err error) {
+
+	return
+}
+
+var drawTestWithRGBA = func(i *image.Image) (err error) {
 	rect := (*i).Bounds()
 	rgbaImg := image.NewRGBA(rect)
 	// TODO goroutine化
@@ -56,6 +61,11 @@ var drawLGTMWithRGBA = func(i *image.Image) (err error) {
 }
 
 var drawLGTMWithPaletted = func(i *image.Image, p color.Palette) (err error) {
+
+	return
+}
+
+var drawTestWithPaletted = func(i *image.Image, p color.Palette) (err error) {
 	rect := (*i).Bounds()
 	palettedImg := image.NewPaletted(rect, p)
 	// TODO goroutine化
