@@ -12,6 +12,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
 
@@ -29,6 +30,23 @@ const (
 	GifCT  = "image/gif"
 )
 
+var lgtmImg image.Image
+
+func init() {
+	log.Println("Reading default LGTM image...")
+
+	lgtmReader, err := os.Open("assets/lgtm.png")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer lgtmReader.Close()
+
+	lgtmImg, _, err = image.Decode(lgtmReader)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
 type (
 	RGBADrawer     func(i *image.Image) (err error)
 	PalettedDrawer func(i *image.Image, p color.Palette) (err error)
@@ -39,7 +57,12 @@ type (
 )
 
 var drawLGTMWithRGBA = func(i *image.Image) (err error) {
-
+	rect := (*i).Bounds()
+	rgbaImg := image.NewRGBA(rect)
+	draw.Draw(rgbaImg, rect, *i, rect.Min, draw.Src)
+	//TODO adaptive resize
+	draw.Draw(rgbaImg, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	*i = rgbaImg
 	return
 }
 
@@ -61,7 +84,12 @@ var drawTestWithRGBA = func(i *image.Image) (err error) {
 }
 
 var drawLGTMWithPaletted = func(i *image.Image, p color.Palette) (err error) {
-
+	rect := (*i).Bounds()
+	palettedImg := image.NewPaletted(rect, p)
+	draw.Draw(palettedImg, rect, *i, rect.Min, draw.Src)
+	//TODO adaptive resize and image quality up
+	draw.Draw(palettedImg, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	*i = palettedImg
 	return
 }
 
