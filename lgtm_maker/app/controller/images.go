@@ -2,10 +2,12 @@ package controller
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"log"
 	"mime/multipart"
 	"net/http"
 
@@ -81,11 +83,12 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	b := new(bytes.Buffer)
 	switch ct {
 	case JpegCT:
-		err = jpeg.Encode(b, img, nil)
+		err = encodeJPEG(&img, b, drawLGTM)
 	case GifCT:
-		err = gif.Encode(b, img, nil)
+		f.Seek(0, 0) //reset the seeker
+		err = encodeGIF(&f, b, drawLGTM)
 	case PngCT:
-		err = png.Encode(b, img)
+		err = encodePNG(&img, b, drawLGTM)
 	}
 	if err != nil {
 		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when encoding the requested image")
@@ -119,14 +122,16 @@ func (im *Images) DELETE(c *kocha.Context) kocha.Result {
 
 func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	if err = draw(img); err != nil {
+		log.Println(err.Error())
 		return
 	}
-	err = jpeg.Encode(b, *img, nil)
+	err = jpeg.Encode(b, *img, &jpeg.Options{Quality: 100})
 	return
 }
 
 func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	if err = draw(img); err != nil {
+		log.Println(err.Error())
 		return
 	}
 	err = png.Encode(b, *img)
@@ -136,24 +141,29 @@ func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
 	gImg, err := gif.DecodeAll(*f)
 	if err != nil {
+		log.Println("Decoding error: " + err.Error())
 		return
 	}
 	// TODO goroutine化できるかな？
 	var img image.Image
+	var frames []*image.Paletted
 	for _, p := range gImg.Image { // []*image.Palleted
 		img = p
 		if err = draw(&img); err != nil {
+			log.Println("Drawing error: " + err.Error())
 			return
 		}
 		p, ok := img.(*image.Paletted)
 		if !ok {
+			err = errors.New("cannot convert Image into Palleted")
+			log.Println("Converting error: " + err.Error())
 			return
 		}
-		gImg.Image = append(gImg.Image, p)
+		frames = append(frames, p)
 	}
 	g := &gif.GIF{
 		Delay:     gImg.Delay,
-		Image:     gImg.Image,
+		Image:     frames,
 		LoopCount: gImg.LoopCount,
 	}
 	err = gif.EncodeAll(b, g)
