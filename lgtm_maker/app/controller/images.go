@@ -30,47 +30,45 @@ const (
 )
 
 type (
-	Drawer func(i *image.Image) (err error)
+	RGBADrawer     func(i *image.Image) (err error)
+	PalettedDrawer func(i *image.Image, p color.Palette) (err error)
 
 	Images struct {
 		*kocha.DefaultController
 	}
 )
 
-var drawLGTM = func(i *image.Image) (err error) {
-	palettedImg, ok := (*i).(*image.Paletted)
-	if ok {
-		rect := (*i).Bounds()
-		// TODO goroutine化
-		for y := 0; y < rect.Max.Y; y++ {
-			for x := 0; x < rect.Max.X; x++ {
-				if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
-					palettedImg.Set(x, y, color.RGBA{255, 255, 0, 128})
-				} else {
-					palettedImg.Set(x, y, (*i).At(x, y))
-				}
+var drawLGTMWithRGBA = func(i *image.Image) (err error) {
+	rect := (*i).Bounds()
+	rgbaImg := image.NewRGBA(rect)
+	// TODO goroutine化
+	for y := 0; y < rect.Max.Y; y++ {
+		for x := 0; x < rect.Max.X; x++ {
+			if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
+				rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 128})
+			} else {
+				rgbaImg.Set(x, y, (*i).At(x, y))
 			}
 		}
-		return
 	}
+	*i = rgbaImg
+	return
+}
 
-	rgbaImg, ok := (*i).(*image.RGBA)
-	if ok {
-		rect := (*i).Bounds()
-		// TODO goroutine化
-		for y := 0; y < rect.Max.Y; y++ {
-			for x := 0; x < rect.Max.X; x++ {
-				if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
-					rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 128})
-				} else {
-					rgbaImg.Set(x, y, (*i).At(x, y))
-				}
+var drawLGTMWithPaletted = func(i *image.Image, p color.Palette) (err error) {
+	rect := (*i).Bounds()
+	palettedImg := image.NewPaletted(rect, p)
+	// TODO goroutine化
+	for y := 0; y < rect.Max.Y; y++ {
+		for x := 0; x < rect.Max.X; x++ {
+			if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
+				palettedImg.Set(x, y, color.RGBA{255, 255, 0, 128})
+			} else {
+				palettedImg.Set(x, y, (*i).At(x, y))
 			}
 		}
-		return
 	}
-
-	err = errors.New("Image format is not appropriate")
+	*i = palettedImg
 	return
 }
 
@@ -118,11 +116,11 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	b := new(bytes.Buffer)
 	switch ct {
 	case JpegCT:
-		err = encodeJPEG(&img, b, drawLGTM)
+		err = encodeJPEG(&img, b, drawLGTMWithRGBA)
 	case GifCT:
-		err = encodeGIF(&f, b, drawLGTM)
+		err = encodeGIF(&f, b, drawLGTMWithPaletted)
 	case PngCT:
-		err = encodePNG(&img, b, drawLGTM)
+		err = encodePNG(&img, b, drawLGTMWithRGBA)
 	}
 	if err != nil {
 		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when encoding the requested image")
@@ -153,7 +151,7 @@ func (im *Images) DELETE(c *kocha.Context) kocha.Result {
 	return kocha.Render(c)
 }
 
-func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+func encodeJPEG(img *image.Image, b *bytes.Buffer, draw RGBADrawer) (err error) {
 	if err = draw(img); err != nil {
 		log.Println(err.Error())
 		return
@@ -162,7 +160,7 @@ func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	return
 }
 
-func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+func encodePNG(img *image.Image, b *bytes.Buffer, draw RGBADrawer) (err error) {
 	if err = draw(img); err != nil {
 		log.Println(err.Error())
 		return
@@ -171,7 +169,7 @@ func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	return
 }
 
-func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
+func encodeGIF(f *multipart.File, b *bytes.Buffer, draw PalettedDrawer) (err error) {
 	(*f).Seek(0, 0) //Seekerのリセット
 	gImg, err := gif.DecodeAll(*f)
 	if err != nil {
@@ -182,7 +180,7 @@ func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
 	var frames []*image.Paletted
 	for _, p := range gImg.Image { // []*image.Palleted
 		img = p
-		if err = draw(&img); err != nil {
+		if err = draw(&img, p.Palette); err != nil {
 			log.Println("Drawing error: " + err.Error())
 			return
 		}
