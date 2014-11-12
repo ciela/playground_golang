@@ -1,6 +1,8 @@
 package config
 
 import (
+	"log"
+
 	"github.com/ciela/playground_golang/lgtm_maker/app/controller"
 	"github.com/naoina/kocha"
 )
@@ -24,6 +26,7 @@ var routes = RouteTable{
 }
 
 func init() {
+	log.Println("Initializing AWS infomation...")
 	AppConfig.RouteTable = kocha.RouteTable(append(routes, RouteTable{
 		{
 			Name:       "static",
