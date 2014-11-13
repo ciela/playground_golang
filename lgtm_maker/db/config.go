@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/naoina/kocha"
 
@@ -26,7 +27,13 @@ func init() {
 		var d *mgo.DialInfo
 		switch dbconf.Driver {
 		case "mongodb":
-			d = &mgo.DialInfo{}
+			d = &mgo.DialInfo{
+				Addrs: []string{
+					"192.168.59.103:27017",
+				},
+				Timeout:  10 * time.Second,
+				Database: dbconf.DSN,
+			}
 		default:
 			panic(fmt.Errorf("unsupported DB type: %v", dbconf.Driver))
 		}

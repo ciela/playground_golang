@@ -26,7 +26,7 @@ var routes = RouteTable{
 }
 
 func init() {
-	log.Println("Initializing AWS infomation...")
+	log.Println("Initializing routing infomation...")
 	AppConfig.RouteTable = kocha.RouteTable(append(routes, RouteTable{
 		{
 			Name:       "static",
