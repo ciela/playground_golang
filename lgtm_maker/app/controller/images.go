@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ciela/playground_golang/lgtm_maker/algo"
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
 
 	"code.google.com/p/go-uuid/uuid"
@@ -32,6 +33,8 @@ const (
 )
 
 var lgtmImg image.Image
+
+var histSorter *algo.ValSorter
 
 func init() {
 	log.Println("Reading default LGTM image...")
@@ -86,25 +89,25 @@ var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err err
 	// if the palette is already full, delete rare colors
 	hl := len(hist)
 	if hl > 254 {
-		// calc the top 2 rare colors
-		var r1, r2 color.Color
-		lastV := rect.Size().X * rect.Size().Y // max pixel
-		for k, v := range hist {
-			if v < lastV {
-				r2 = r1
-				r1 = k
-			}
-			lastV = v
-		}
+		algo.NewValSorter(hist).Sort()
 
+		var numDel int
 		if hl == 256 {
-			delete(hist, r1)
-			delete(hist, r2)
+			numDel = 2
 		} else if hl == 255 {
-			delete(hist, r1)
+			numDel = 1
 		} else {
 			err = fmt.Errorf("Histogram length is incorrect: %v", hl)
 			return
+		}
+
+		deleted := 0
+		for c, _ := range hist {
+			if deleted == numDel {
+				break
+			}
+			delete(hist, c)
+			deleted++
 		}
 	}
 
