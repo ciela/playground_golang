@@ -2,7 +2,6 @@ package controller
 
 import (
 	"bytes"
-	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -14,7 +13,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/ciela/playground_golang/lgtm_maker/app/util"
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
 
 	"code.google.com/p/go-uuid/uuid"
@@ -50,7 +48,7 @@ func init() {
 
 type (
 	RGBADrawer     func(i *image.Image) (err error)
-	PalettedDrawer func(i *image.Image, p color.Palette) (err error)
+	PalettedDrawer func(i *image.Paletted) (dst *image.Paletted, err error)
 
 	Images struct {
 		*kocha.DefaultController
@@ -67,49 +65,42 @@ var drawLGTMWithRGBA = func(i *image.Image) (err error) {
 	return
 }
 
-var drawTestWithRGBA = func(i *image.Image) (err error) {
+var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err error) {
 	rect := (*i).Bounds()
-	rgbaImg := image.NewRGBA(rect)
-	// TODO goroutine化
-	for y := 0; y < rect.Max.Y; y++ {
-		for x := 0; x < rect.Max.X; x++ {
-			if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
-				rgbaImg.Set(x, y, color.RGBA{255, 255, 255, 128})
-			} else {
-				rgbaImg.Set(x, y, (*i).At(x, y))
-			}
+
+	hist := make(map[color.Color]int)
+	for y := 0; y < rect.Dy(); y++ {
+		for x := 0; x < rect.Dx(); x++ {
+			hist[i.At(x, y)]++
 		}
 	}
-	*i = rgbaImg
-	return
-}
 
-var drawLGTMWithPaletted = func(i *image.Image, p color.Palette) (err error) {
-	if err = drawLGTMWithRGBA(i); err != nil {
-		return
-	}
-	rect := (*i).Bounds()
-	palettedImg := image.NewPaletted(rect, p)
-	util.MyFS.Draw(palettedImg, rect, *i, rect.Min)
-	//draw.FloydSteinberg.Draw(palettedImg, rect, *i, rect.Min)
-	*i = palettedImg
-	return
-}
-
-var drawTestWithPaletted = func(i *image.Image, p color.Palette) (err error) {
-	rect := (*i).Bounds()
-	palettedImg := image.NewPaletted(rect, p)
-	// TODO goroutine化
-	for y := 0; y < rect.Max.Y; y++ {
-		for x := 0; x < rect.Max.X; x++ {
-			if x >= rect.Max.X/4 && x < rect.Max.X*3/4 && y >= rect.Max.Y/4 && y < rect.Max.Y*3/4 {
-				palettedImg.Set(x, y, color.RGBA{255, 255, 0, 128})
-			} else {
-				palettedImg.Set(x, y, (*i).At(x, y))
-			}
+	var r1, r2 color.Color // the top 2 rare colors
+	lastV := rect.Size().X * rect.Size().Y
+	for k, v := range hist {
+		if v < lastV {
+			r2 = r1
+			r1 = k
 		}
+		lastV = v
 	}
-	*i = palettedImg
+
+	if len(hist) > 254 {
+		delete(hist, r1)
+		delete(hist, r2)
+	} else if len(hist) > 255 {
+		delete(hist, r1)
+	}
+
+	var newPalette []color.Color
+	for k, _ := range hist {
+		newPalette = append(newPalette, k)
+	}
+	log.Printf("Image size: %v, Length of original palette: %v, Length of new palette: %v, Calculated colors: %v\n", rect.Size(), len(i.Palette), len(newPalette), len(hist))
+
+	dst = image.NewPaletted(rect, append(newPalette, color.Black, color.White))
+	draw.Draw(dst, rect, i, rect.Min, draw.Src)
+	draw.Draw(dst, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
 	return
 }
 
@@ -171,9 +162,11 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 
 	// 配置用のパス決めてS3に配置
 	p := uuid.New() //ver4
-	if err = aws.LgtmBucket.Put(p, b.Bytes(), ct, s3.PublicRead); err != nil {
-		return kocha.RenderError(c, http.StatusInternalServerError, "An error has occured when uploading image")
-	}
+	go func() {
+		if err = aws.LgtmBucket.Put(p, b.Bytes(), ct, s3.PublicRead); err != nil {
+			log.Println("An error has occured when uploading image: " + p)
+		}
+	}()
 
 	// TODO DBにIDを保存
 
@@ -217,21 +210,14 @@ func encodeGIF(f *multipart.File, b *bytes.Buffer, draw PalettedDrawer) (err err
 		log.Println("Decoding error: " + err.Error())
 		return
 	}
-	var img image.Image
 	var frames []*image.Paletted
 	for _, p := range gImg.Image { // []*image.Palleted
-		img = p
-		if err = draw(&img, p.Palette); err != nil {
+		newP, err := draw(p)
+		if err != nil {
 			log.Println("Drawing error: " + err.Error())
-			return
+			return err
 		}
-		p, ok := img.(*image.Paletted)
-		if !ok {
-			err = errors.New("cannot convert Image into Palleted")
-			log.Println("Converting error: " + err.Error())
-			return
-		}
-		frames = append(frames, p)
+		frames = append(frames, newP)
 	}
 	g := &gif.GIF{
 		Delay:     gImg.Delay,
