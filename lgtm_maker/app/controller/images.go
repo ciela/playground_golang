@@ -19,6 +19,7 @@ import (
 	"code.google.com/p/go-uuid/uuid"
 	"github.com/mitchellh/goamz/s3"
 	"github.com/naoina/kocha"
+	"github.com/nfnt/resize"
 )
 
 const (
@@ -56,12 +57,17 @@ type (
 	}
 )
 
+func resizeLGTM(rect image.Rectangle) image.Image {
+	w := uint(rect.Dx() * 2 / 3)
+	return resize.Resize(w, 0, lgtmImg, resize.NearestNeighbor)
+}
+
 var drawLGTMWithRGBA = func(i *image.Image) (err error) {
 	rect := (*i).Bounds()
+	lgtm := resizeLGTM(rect)
 	rgbaImg := image.NewRGBA(rect)
 	draw.Draw(rgbaImg, rect, *i, rect.Min, draw.Src)
-	//TODO adaptive resize
-	draw.Draw(rgbaImg, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	draw.Draw(rgbaImg, lgtm.Bounds(), lgtm, rect.Min, draw.Over)
 	*i = rgbaImg
 	return
 }
@@ -108,9 +114,10 @@ var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err err
 		newPalette = append(newPalette, k)
 	}
 
+	lgtm := resizeLGTM(rect)
 	dst = image.NewPaletted(rect, append(newPalette, color.Black, color.White))
 	draw.Draw(dst, rect, i, rect.Min, draw.Src)
-	draw.Draw(dst, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	draw.Draw(dst, lgtm.Bounds(), lgtm, rect.Min, draw.Over)
 	return
 }
 
