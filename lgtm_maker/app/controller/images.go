@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ciela/playground_golang/lgtm_maker/app/util"
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
 
 	"code.google.com/p/go-uuid/uuid"
@@ -84,11 +85,13 @@ var drawTestWithRGBA = func(i *image.Image) (err error) {
 }
 
 var drawLGTMWithPaletted = func(i *image.Image, p color.Palette) (err error) {
+	if err = drawLGTMWithRGBA(i); err != nil {
+		return
+	}
 	rect := (*i).Bounds()
 	palettedImg := image.NewPaletted(rect, p)
-	draw.Draw(palettedImg, rect, *i, rect.Min, draw.Src)
-	//TODO adaptive resize and image quality up
-	draw.Draw(palettedImg, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	util.MyFS.Draw(palettedImg, rect, *i, rect.Min)
+	//draw.FloydSteinberg.Draw(palettedImg, rect, *i, rect.Min)
 	*i = palettedImg
 	return
 }
