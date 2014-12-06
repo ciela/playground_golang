@@ -2,14 +2,17 @@ package controller
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 
 	"github.com/ciela/playground_golang/lgtm_maker/aws"
 
@@ -27,15 +30,87 @@ const (
 	GifCT  = "image/gif"
 )
 
+var lgtmImg image.Image
+
+func init() {
+	log.Println("Reading default LGTM image...")
+
+	lgtmReader, err := os.Open("assets/lgtm.png")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer lgtmReader.Close()
+
+	lgtmImg, _, err = image.Decode(lgtmReader)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
 type (
-	Drawer func(i *image.Image) (err error)
+	RGBADrawer     func(i *image.Image) (err error)
+	PalettedDrawer func(i *image.Paletted) (dst *image.Paletted, err error)
 
 	Images struct {
 		*kocha.DefaultController
 	}
 )
 
-var drawLGTM = func(i *image.Image) (err error) {
+var drawLGTMWithRGBA = func(i *image.Image) (err error) {
+	rect := (*i).Bounds()
+	rgbaImg := image.NewRGBA(rect)
+	draw.Draw(rgbaImg, rect, *i, rect.Min, draw.Src)
+	//TODO adaptive resize
+	draw.Draw(rgbaImg, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
+	*i = rgbaImg
+	return
+}
+
+var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err error) {
+	rect := (*i).Bounds()
+
+	// calculate histogram
+	hist := make(map[color.Color]int)
+	for y := 0; y < rect.Dy(); y++ {
+		for x := 0; x < rect.Dx(); x++ {
+			hist[i.At(x, y)]++
+		}
+	}
+
+	// if the palette is already full, delete rare colors
+	hl := len(hist)
+	if hl > 254 {
+		// calc the top 2 rare colors
+		var r1, r2 color.Color
+		lastV := rect.Size().X * rect.Size().Y // max pixel
+		for k, v := range hist {
+			if v < lastV {
+				r2 = r1
+				r1 = k
+			}
+			lastV = v
+		}
+
+		if hl == 256 {
+			delete(hist, r1)
+			delete(hist, r2)
+		} else if hl == 255 {
+			delete(hist, r1)
+		} else {
+			err = fmt.Errorf("Histogram length is incorrect: %v", hl)
+			return
+		}
+	}
+
+	// create new palette for dst image
+	var newPalette []color.Color
+	for k, _ := range hist {
+		newPalette = append(newPalette, k)
+	}
+
+	dst = image.NewPaletted(rect, append(newPalette, color.Black, color.White))
+	draw.Draw(dst, rect, i, rect.Min, draw.Src)
+	draw.Draw(dst, lgtmImg.Bounds(), lgtmImg, rect.Min, draw.Over)
 	return
 }
 
@@ -83,11 +158,11 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	b := new(bytes.Buffer)
 	switch ct {
 	case JpegCT:
-		err = encodeJPEG(&img, b, drawLGTM)
+		err = encodeJPEG(&img, b, drawLGTMWithRGBA)
 	case GifCT:
-		err = encodeGIF(&f, b, drawLGTM)
+		err = encodeGIF(&f, b, drawLGTMWithPaletted)
 	case PngCT:
-		err = encodePNG(&img, b, drawLGTM)
+		err = encodePNG(&img, b, drawLGTMWithRGBA)
 	}
 	if err != nil {
 		return kocha.RenderError(c, http.StatusBadRequest, "Error has occured when encoding the requested image")
@@ -98,7 +173,7 @@ func (im *Images) POST(c *kocha.Context) kocha.Result {
 	// 配置用のパス決めてS3に配置
 	p := uuid.New() //ver4
 	if err = aws.LgtmBucket.Put(p, b.Bytes(), ct, s3.PublicRead); err != nil {
-		return kocha.RenderError(c, http.StatusInternalServerError, "An error has occured when uploading image")
+		return kocha.RenderError(c, http.StatusInternalServerError, "An error has occured when uploading image: "+p)
 	}
 
 	// TODO DBにIDを保存
@@ -118,7 +193,7 @@ func (im *Images) DELETE(c *kocha.Context) kocha.Result {
 	return kocha.Render(c)
 }
 
-func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+func encodeJPEG(img *image.Image, b *bytes.Buffer, draw RGBADrawer) (err error) {
 	if err = draw(img); err != nil {
 		log.Println(err.Error())
 		return
@@ -127,7 +202,7 @@ func encodeJPEG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	return
 }
 
-func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
+func encodePNG(img *image.Image, b *bytes.Buffer, draw RGBADrawer) (err error) {
 	if err = draw(img); err != nil {
 		log.Println(err.Error())
 		return
@@ -136,29 +211,21 @@ func encodePNG(img *image.Image, b *bytes.Buffer, draw Drawer) (err error) {
 	return
 }
 
-func encodeGIF(f *multipart.File, b *bytes.Buffer, draw Drawer) (err error) {
+func encodeGIF(f *multipart.File, b *bytes.Buffer, draw PalettedDrawer) (err error) {
 	(*f).Seek(0, 0) //Seekerのリセット
 	gImg, err := gif.DecodeAll(*f)
 	if err != nil {
 		log.Println("Decoding error: " + err.Error())
 		return
 	}
-	// TODO goroutine化できるかな？
-	var img image.Image
 	var frames []*image.Paletted
 	for _, p := range gImg.Image { // []*image.Palleted
-		img = p
-		if err = draw(&img); err != nil {
+		newP, err := draw(p)
+		if err != nil {
 			log.Println("Drawing error: " + err.Error())
-			return
+			return err
 		}
-		p, ok := img.(*image.Paletted)
-		if !ok {
-			err = errors.New("cannot convert Image into Palleted")
-			log.Println("Converting error: " + err.Error())
-			return
-		}
-		frames = append(frames, p)
+		frames = append(frames, newP)
 	}
 	g := &gif.GIF{
 		Delay:     gImg.Delay,
