@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -68,6 +69,7 @@ var drawLGTMWithRGBA = func(i *image.Image) (err error) {
 var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err error) {
 	rect := (*i).Bounds()
 
+	// calculate histogram
 	hist := make(map[color.Color]int)
 	for y := 0; y < rect.Dy(); y++ {
 		for x := 0; x < rect.Dx(); x++ {
@@ -75,28 +77,36 @@ var drawLGTMWithPaletted = func(i *image.Paletted) (dst *image.Paletted, err err
 		}
 	}
 
-	var r1, r2 color.Color // the top 2 rare colors
-	lastV := rect.Size().X * rect.Size().Y
-	for k, v := range hist {
-		if v < lastV {
-			r2 = r1
-			r1 = k
+	// if the palette is already full, delete rare colors
+	hl := len(hist)
+	if hl > 254 {
+		// calc the top 2 rare colors
+		var r1, r2 color.Color
+		lastV := rect.Size().X * rect.Size().Y // max pixel
+		for k, v := range hist {
+			if v < lastV {
+				r2 = r1
+				r1 = k
+			}
+			lastV = v
 		}
-		lastV = v
+
+		if hl == 256 {
+			delete(hist, r1)
+			delete(hist, r2)
+		} else if hl == 255 {
+			delete(hist, r1)
+		} else {
+			err = fmt.Errorf("Histogram length is incorrect: %v", hl)
+			return
+		}
 	}
 
-	if len(hist) > 254 {
-		delete(hist, r1)
-		delete(hist, r2)
-	} else if len(hist) > 255 {
-		delete(hist, r1)
-	}
-
+	// create new palette for dst image
 	var newPalette []color.Color
 	for k, _ := range hist {
 		newPalette = append(newPalette, k)
 	}
-	log.Printf("Image size: %v, Length of original palette: %v, Length of new palette: %v, Calculated colors: %v\n", rect.Size(), len(i.Palette), len(newPalette), len(hist))
 
 	dst = image.NewPaletted(rect, append(newPalette, color.Black, color.White))
 	draw.Draw(dst, rect, i, rect.Min, draw.Src)
